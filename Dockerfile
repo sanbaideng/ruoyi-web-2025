@@ -17,25 +17,24 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install
 RUN pnpm remove @vue-office/pdf
 RUN pnpm approve-builds esbuild vue-demi
-# Ensure vite-plugin-svg-icons is installed
+
+# Modify the component that uses @vue-office/pdf to completely remove the dependency with proper syntax
+RUN sed -i.bak 's|onMounted(async () => {.*try {.*const module = await import.*}.*} catch (error) {.*console.error.*}.*})|onMounted(() => { console.warn("PDF viewer disabled in production build"); })|s' ./src/views/fanyi/components/documentComponent.vue
+
+# Ensure vite-plugin-svg-icons is properly installed and configured
 RUN pnpm add -D vite-plugin-svg-icons
+
+# Create a temporary file to handle the SVG import in main.ts
+RUN cp ./src/main.ts ./src/main.ts.bak && \
+    sed -i 's|import .virtual:svg-icons-register.|// import from "virtual:svg-icons-register"|g' ./src/main.ts
 
 # Copy the rest of the application
 COPY . .
 
-# Modify the component that uses @vue-office/pdf to completely remove the dependency with proper syntax
-RUN sed -i.bak '/onMounted(async () => {/,/})/c\onMounted(() => {\n\tconsole.warn("PDF viewer disabled in production build");\n})' ./src/views/fanyi/components/documentComponent.vue
-
-# Modify vite.config.ts to exclude @vue-office/pdf
-RUN sed -i.bak '/build: {/,/},/ s/},/commonjsOptions: { ignoreTryCatch: false, ignoreDynamicRequires: true } },/' vite.config.ts
-
-# Attempt to build with several fallback strategies if needed
+# Build the app
 RUN NODE_ENV=production pnpm run build-only || \
-    (echo "First build attempt failed, trying with SVG import fix..." && \
-    grep -l "virtual:svg-icons-register" ./src/**/*.ts ./src/**/*.js 2>/dev/null | xargs -I{} sed -i.bak 's/from "virtual:svg-icons-register"/\/\/ from "virtual:svg-icons-register"/g' {} && \
-    NODE_ENV=production pnpm run build-only) || \
-    (echo "Second build attempt failed, trying with simple configuration..." && \
-    echo "import { defineConfig } from 'vite'; import vue from '@vitejs/plugin-vue'; export default defineConfig({ plugins: [vue()] });" > vite.config.ts && \
+    (echo "Build failed, attempting with simplified vite config..." && \
+    echo "import { defineConfig } from 'vite'; import vue from '@vitejs/plugin-vue'; import svgIcons from 'vite-plugin-svg-icons'; import path from 'path'; export default defineConfig({ plugins: [vue(), svgIcons({ iconDirs: [path.resolve(process.cwd(), 'src/assets/icons')], symbolId: 'icon-[dir]-[name]' })], build: { commonjsOptions: { ignoreTryCatch: false, ignoreDynamicRequires: true } } });" > vite.config.ts && \
     NODE_ENV=production pnpm run build-only)
 
 # Clean up development dependencies
