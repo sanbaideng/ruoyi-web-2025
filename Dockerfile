@@ -1,56 +1,33 @@
-# build front-end
-FROM node:lts-alpine AS frontend
-
-RUN npm install pnpm -g
-
-WORKDIR /app
-
-COPY ./package.json /app
-
-COPY ./pnpm-lock.yaml /app
-
-RUN pnpm install
-
-COPY . /app
-
-RUN pnpm run build
-
-# build backend
-FROM node:lts-alpine as backend
-
-RUN npm install pnpm -g
-
-WORKDIR /app
-
-COPY ./package.json /app
-
-COPY ./pnpm-lock.yaml /app
-
-RUN pnpm install
-
-COPY . /app
-
-RUN pnpm build
-
-# service
+# Single-stage build for simplicity and efficiency
 FROM node:lts-alpine
 
+# Set NODE_OPTIONS to increase memory limit
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+# Install pnpm globally
 RUN npm install pnpm -g
 
+# Set working directory
 WORKDIR /app
 
-COPY ./package.json /app
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml ./
 
-COPY ./pnpm-lock.yaml /app
+# Install dependencies
+RUN pnpm install
 
-RUN pnpm install --production && rm -rf /root/.npm /root/.pnpm-store /usr/local/share/.cache /tmp/*
+# Copy the rest of the application
+COPY . .
 
-COPY . /app
+# Build the application
+RUN NODE_ENV=production pnpm run build-only
 
-COPY --from=frontend /app/dist /app/public
+# Clean up development dependencies
+RUN pnpm install --production && \
+    rm -rf /root/.npm /root/.pnpm-store /usr/local/share/.cache /tmp/*
 
-COPY --from=backend /app/build /app/build
-
+# Expose the port the app runs on
 EXPOSE 3002
 
-CMD ["pnpm", "run", "prod"]
+# Command to run the application
+CMD ["pnpm", "run", "preview"]
