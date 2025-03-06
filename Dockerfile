@@ -21,11 +21,11 @@ RUN pnpm approve-builds @vue-office/pdf esbuild vue-demi
 COPY . .
 
 # Fix for @vue-office/pdf resolution issue
-RUN echo '{"type":"module"}' > ./node_modules/@vue-office/pdf/package.json
+RUN echo '{"type":"module","main":"dist/vue-office-pdf.es.js"}' > ./node_modules/@vue-office/pdf/package.json
 
 # Build the application
 RUN NODE_ENV=production pnpm run build-only || (echo "Build failed, checking for @vue-office/pdf usage" && \
-    sed -i 's/import.*@vue-office\/pdf.*//g' $(grep -l "@vue-office/pdf" ./src/**/*.vue ./src/**/*.ts ./src/**/*.js 2>/dev/null || echo "") && \
+    sed -i.bak 's/import.*@vue-office\/pdf.*//g' $(grep -l "@vue-office/pdf" ./src/**/*.vue ./src/**/*.ts ./src/**/*.js 2>/dev/null || echo "/dev/null") && \
     NODE_ENV=production pnpm run build-only)
 
 # Clean up development dependencies
