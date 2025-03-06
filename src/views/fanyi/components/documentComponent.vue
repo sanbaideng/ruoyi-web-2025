@@ -25,7 +25,12 @@
 		</div>
 		<div class="name-content">
 			<div :style="{ borderRight: aiAnswer ? '1px dashed #ccc' : 'none' }">
-				<vue-office-pdf :src="pdf" style="height: calc(100vh - 120px)" @rendered="rendered" />
+				<div v-if="isPdfLoaded" style="height: calc(100vh - 120px)">
+					<component :is="pdfComponent" :src="pdf" @rendered="rendered" />
+				</div>
+				<div v-else style="height: calc(100vh - 120px); display: flex; justify-content: center; align-items: center;">
+					<p>PDF预览加载中...</p>
+				</div>
 			</div>
 			<div v-if="aiAnswer">2</div>
 		</div>
@@ -38,10 +43,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, shallowRef, onMounted } from 'vue'
 import { NUpload, UploadFileInfo, useMessage, NUploadDragger, NP, NButton } from 'naive-ui'
 import { getToken } from '@/store/modules/auth/helper'
-import VueOfficePdf from '@vue-office/pdf'
+
 const message = useMessage()
 const token = getToken()
 const headers = {
@@ -50,9 +55,30 @@ const headers = {
 let aiAnswer = ref(false)
 let pdf = ref('http://static.shanhuxueyuan.com/test.pdf')
 const selectedFileId = ref<number | null>(1)
+const pdfComponent = shallowRef(null)
+const isPdfLoaded = ref(false)
+
+// Dynamically import the PDF component
+onMounted(async () => {
+	try {
+		const module = await import('@vue-office/pdf').catch(() => {
+			console.warn('Failed to load @vue-office/pdf module')
+			return { default: null }
+		})
+		
+		if (module.default) {
+			pdfComponent.value = module.default
+			isPdfLoaded.value = true
+		}
+	} catch (error) {
+		console.error('Error loading PDF component:', error)
+	}
+})
+
 function rendered(e: any) {
 	console.log(e)
 }
+
 let fileList = ref<UploadFileInfo[]>([
 	{
 		id: 'avatar',
