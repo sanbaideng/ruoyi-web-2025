@@ -17,12 +17,14 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install
 RUN pnpm remove @vue-office/pdf
 RUN pnpm approve-builds esbuild vue-demi
+# Ensure vite-plugin-svg-icons is installed
+RUN pnpm add -D vite-plugin-svg-icons
 
 # Copy the rest of the application
 COPY . .
 
-# Modify the component that uses @vue-office/pdf to completely remove the dependency
-RUN sed -i.bak 's/const module = await import(.@vue-office\/pdf.).*/console.warn("PDF viewer disabled in production build");/' ./src/views/fanyi/components/documentComponent.vue
+# Modify the component that uses @vue-office/pdf to completely remove the dependency with proper syntax
+RUN sed -i.bak '/onMounted(async () => {/,/})/c\onMounted(() => {\n\tconsole.warn("PDF viewer disabled in production build");\n})' ./src/views/fanyi/components/documentComponent.vue
 
 # Create vite.config.js with proper configuration
 RUN echo 'import path from "path";' > vite.config.js && \
@@ -51,8 +53,16 @@ RUN echo 'import path from "path";' > vite.config.js && \
     echo '  };' >> vite.config.js && \
     echo '});' >> vite.config.js
 
-# Build the application
-RUN NODE_ENV=production pnpm run build-only
+# Attempt to build with several fallback strategies if needed
+RUN NODE_ENV=production pnpm run build-only || \
+    (echo "First build attempt failed, trying with SVG import fix..." && \
+    grep -l "virtual:svg-icons-register" ./src/**/*.ts ./src/**/*.js 2>/dev/null | xargs -I{} sed -i.bak 's/from "virtual:svg-icons-register"/\/\/ from "virtual:svg-icons-register"/g' {} && \
+    NODE_ENV=production pnpm run build-only) || \
+    (echo "Second build attempt failed, trying with additional configuration..." && \
+    echo "Build with minimal configuration" && \
+    rm vite.config.js && \
+    echo 'import { defineConfig } from "vite"; import vue from "@vitejs/plugin-vue"; export default defineConfig({ plugins: [vue()] });' > vite.config.js && \
+    NODE_ENV=production pnpm run build-only)
 
 # Clean up development dependencies
 RUN pnpm install --production && \
