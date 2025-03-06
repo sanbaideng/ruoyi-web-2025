@@ -1,48 +1,32 @@
-# Single-stage build for simplicity and efficiency
-FROM node:lts-alpine
+# 构建阶段
+FROM node:16-alpine as builder
 
-# Set NODE_OPTIONS to increase memory limit
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-
-# Install pnpm globally
-RUN npm install pnpm -g
-
-# Set working directory
+# 设置工作目录
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package.json pnpm-lock.yaml ./
+# 复制 package.json 和 package-lock.json (如果存在)
+COPY package*.json ./
 
-# Install dependencies without @vue-office/pdf
-RUN pnpm install
-RUN pnpm remove @vue-office/pdf
-RUN pnpm approve-builds esbuild vue-demi
+# 安装依赖
+RUN npm install
 
-# Modify the component that uses @vue-office/pdf to completely remove the dependency with proper syntax
-RUN sed -i.bak 's|onMounted(async () => {.*try {.*const module = await import.*}.*} catch (error) {.*console.error.*}.*})|onMounted(() => { console.warn("PDF viewer disabled in production build"); })|s' ./src/views/fanyi/components/documentComponent.vue
-
-# Ensure vite-plugin-svg-icons is properly installed and configured
-RUN pnpm add -D vite-plugin-svg-icons
-
-# Create a temporary file to handle the SVG import in main.ts
-RUN cp ./src/main.ts ./src/main.ts.bak && \
-    sed -i 's|import .virtual:svg-icons-register.|// import from "virtual:svg-icons-register"|g' ./src/main.ts
-
-# Copy the rest of the application
+# 复制源代码
 COPY . .
 
-# Build the app
-RUN NODE_ENV=production pnpm run build-only || \
-    (echo "Build failed, attempting with simplified vite config..." && \
-    echo "import { defineConfig } from 'vite'; import vue from '@vitejs/plugin-vue'; import svgIcons from 'vite-plugin-svg-icons'; import path from 'path'; export default defineConfig({ plugins: [vue(), svgIcons({ iconDirs: [path.resolve(process.cwd(), 'src/assets/icons')], symbolId: 'icon-[dir]-[name]' })], build: { commonjsOptions: { ignoreTryCatch: false, ignoreDynamicRequires: true } } });" > vite.config.ts && \
-    NODE_ENV=production pnpm run build-only)
+# 构建项目
+RUN npm run build
 
-# Clean up development dependencies
-RUN pnpm install --production && \
-    rm -rf /root/.npm /root/.pnpm-store /usr/local/share/.cache /tmp/*
+# 部署阶段
+FROM nginx:alpine
 
-# Expose the port the app runs on
-EXPOSE 3002
+# 将构建阶段生成的dist文件复制到nginx的html目录下的web目录中
+COPY --from=builder /app/dist/ /usr/share/nginx/html/web/
 
-# Command to run the application
-CMD ["pnpm", "run", "preview"]
+# 用本地的nginx.conf配置来替换nginx镜像里的默认配置
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# 暴露8081端口
+EXPOSE 8081
+
+# 启动nginx
+CMD ["nginx", "-g", "daemon off;"]
