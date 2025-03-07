@@ -167,7 +167,7 @@ export const subGPT= async (data:any, chat:Chat.Chat )=>{
    if(  action=='gpt.dall-e-3' ){ //执行变化
        // chat.model= 'dall-e-3';
 
-       let d= await gptFetch('/dall3', data.data);
+       let d= await gptFetch('/chat/dall3', data.data);
        try{
             const rz : any= d.data[0];
             chat.text= rz.revised_prompt??`图片已完成`;
